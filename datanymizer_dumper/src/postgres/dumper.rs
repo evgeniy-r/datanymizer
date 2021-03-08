@@ -128,7 +128,7 @@ impl Dumper for PgDumper {
                     let l = line?;
                     let row = PgRow::from_string_row(l.to_string(), table.clone());
                     let transformed = row.transform(&self.engine)?;
-                    // Writer::from_writer(&self.dump_writer).write_record(&transformed_row)?;
+                    Writer::from_writer(&self.dump_writer).write_record(&transformed_row)?;
                     self.dump_writer.write_all(transformed.as_bytes())?;
                     self.dump_writer.write_all(b"\n")?;
                 }

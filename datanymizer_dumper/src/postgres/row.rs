@@ -29,13 +29,22 @@ where
     pub fn transform(&self, engine: &Engine) -> Result<String> {
         let split_char: char = char::from_u32(0x0009).unwrap();
         let values: Vec<_> = self.source.split(split_char).collect();
-        let transformed_values = engine.process_row(
-            self.table.get_name(),
-            self.table.get_column_indexes(),
-            &values,
-        )?;
+        let transformed_values = engine
+            .process_row(
+                self.table.get_name(),
+                self.table.get_column_indexes(),
+                &values,
+            )?
+            .iter()
+            .map(|v| {
+                let s = v.replace("\t", "\\t");
+                dbg!(&s);
+                s
+            })
+            .collect::<Vec<_>>()
+            .join("\t");
 
-        Ok(transformed_values.join("\t"))
+        Ok(transformed_values)
     }
 }
 
@@ -45,49 +54,86 @@ mod tests {
     use crate::postgres::{column::PgColumn, table::PgTable};
     use datanymizer_engine::Settings;
 
-    #[test]
-    fn transform() {
-        let config = r#"
-          source: {}
-          tables:
-            - name: table_name
-              rules:
-                first_name:
-                  capitalize: ~
-                middle_name:
-                  capitalize: ~
-                last_name:
-                  capitalize: ~
-        "#;
-        let settings = Settings::from_yaml(config, String::new()).unwrap();
+    mod transform {
+        use super::*;
 
-        let mut table = PgTable::new("table_name".to_string(), None);
+        #[test]
+        fn sample() {
+            let config = r#"
+              source: {}
+              tables:
+                - name: table_name
+                  rules:
+                    first_name:
+                      capitalize: ~
+                    middle_name:
+                      capitalize: ~
+                    last_name:
+                      capitalize: ~
+            "#;
+            let settings = Settings::from_yaml(config, String::new()).unwrap();
 
-        let col1 = PgColumn {
-            position: 1,
-            name: String::from("first_name"),
-            data_type: String::new(),
-            inner_type: Some(0),
-        };
-        let col2 = PgColumn {
-            position: 2,
-            name: String::from("middle_name"),
-            data_type: String::new(),
-            inner_type: Some(0),
-        };
-        let col3 = PgColumn {
-            position: 3,
-            name: String::from("last_name"),
-            data_type: String::new(),
-            inner_type: Some(0),
-        };
+            let mut table = PgTable::new("table_name".to_string(), None);
 
-        table.set_columns(vec![col1, col2, col3]);
-        let row = PgRow::from_string_row("first\tmiddle\tlast".to_string(), table);
+            let col1 = PgColumn {
+                position: 1,
+                name: String::from("first_name"),
+                data_type: String::new(),
+                inner_type: Some(0),
+            };
+            let col2 = PgColumn {
+                position: 2,
+                name: String::from("middle_name"),
+                data_type: String::new(),
+                inner_type: Some(0),
+            };
+            let col3 = PgColumn {
+                position: 3,
+                name: String::from("last_name"),
+                data_type: String::new(),
+                inner_type: Some(0),
+            };
 
-        assert_eq!(
-            row.transform(&Engine::new(settings)).unwrap(),
-            "First\tMiddle\tLast"
-        );
+            table.set_columns(vec![col1, col2, col3]);
+            let row = PgRow::from_string_row("first\tmiddle\tlast".to_string(), table);
+
+            assert_eq!(
+                row.transform(&Engine::new(settings)).unwrap(),
+                "First\tMiddle\tLast"
+            );
+        }
+
+        #[test]
+        fn tab_character() {
+            let config = format!(
+                r#"
+                  source: {{}}
+                  tables:
+                    - name: table_name
+                      rules:
+                        text:
+                          template:
+                            format: {}
+                "#,
+                "text\twith\ttabs"
+            );
+            let settings = Settings::from_yaml(config.as_str(), String::new()).unwrap();
+
+            let mut table = PgTable::new("table_name".to_string(), None);
+
+            let col = PgColumn {
+                position: 1,
+                name: String::from("text"),
+                data_type: String::new(),
+                inner_type: Some(0),
+            };
+
+            table.set_columns(vec![col]);
+            let row = PgRow::from_string_row("text".to_string(), table);
+            let transformed_row = row.transform(&Engine::new(settings)).unwrap();
+            dbg!(&transformed_row);
+
+            assert_eq!(transformed_row.split("\t").collect::<Vec<_>>().len(), 1);
+        }
     }
 }
